@@ -261,14 +261,23 @@ class MarketDataService {
 
   async getAllMarketData(): Promise<Array<{ data: MarketData; bias: MarketBias }>> {
     const symbols = Object.keys(MARKET_SYMBOLS);
-    const results = await Promise.all(
+    const settled = await Promise.allSettled(
       symbols.map(async (symbol) => {
         const data = await this.fetchMarketData(symbol);
         const bias = this.calculateBias(data);
         return { data, bias };
       })
     );
-    return results;
+
+    const successes = settled
+      .filter((r): r is PromiseFulfilledResult<{ data: MarketData; bias: MarketBias }> => r.status === 'fulfilled')
+      .map((r) => r.value);
+
+    if (successes.length === 0) {
+      throw new Error('Failed to fetch all market data');
+    }
+
+    return successes;
   }
 
   // Check if current time is after 11 PM UK time

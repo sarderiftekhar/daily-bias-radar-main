@@ -1,0 +1,23 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+# Redirect app routes for SPA
+[[redirects]]
+  from = "/avapi"
+  to = "/.netlify/functions/alphavantage"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/yapi/*"
+  to = "/.netlify/functions/yahoo/:splat"
+  status = 200
+  force = true
+
+# SPA fallback
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -82,7 +82,8 @@ export const MarketCard = ({ data, bias, showBias, predictionDate }: MarketCardP
     switch (bias.type) {
       case 'bullish':
         return {
-          badge: "bg-gradient-bullish text-bullish-foreground border-bullish/50",
+          // Make the badge always prominent (same color as hover)
+          badge: "bg-bullish text-bullish-foreground border-bullish hover:bg-bullish",
           glow: "shadow-glow-bullish",
           header: "from-bullish/30 to-transparent"
         };
@@ -120,7 +121,15 @@ export const MarketCard = ({ data, bias, showBias, predictionDate }: MarketCardP
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-xl font-bold text-foreground">{data.name}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xl font-bold text-foreground">{data.name}</h3>
+              {showBias && (
+                <Badge className={cn("flex items-center gap-1.5 px-3 py-1 border font-semibold", styles.badge)}>
+                  {getBiasIcon()}
+                  <span className="font-semibold capitalize">{bias.type}</span>
+                </Badge>
+              )}
+            </div>
             <div className="flex items-center gap-2 mt-1">
               <p className="text-xs text-muted-foreground tracking-wider">{data.symbol}</p>
               {/* Fallback badge for transparency */}
@@ -132,18 +141,7 @@ export const MarketCard = ({ data, bias, showBias, predictionDate }: MarketCardP
               )}
             </div>
           </div>
-          {showBias && (
-            <div className="flex flex-col items-end gap-2">
-              <Badge className={cn("flex items-center gap-1.5 px-3 py-1", styles.badge)}>
-                {getBiasIcon()}
-                <span className="font-semibold capitalize">{bias.type}</span>
-              </Badge>
-              {/* Source label */}
-              {data.source && (
-                <span className="text-[10px] text-muted-foreground">Source: {sourceLabel}</span>
-              )}
-            </div>
-          )}
+          {/* Right header column removed: Source moved to footer */}
         </div>
 
         {/* Price Information */}
@@ -207,8 +205,9 @@ export const MarketCard = ({ data, bias, showBias, predictionDate }: MarketCardP
           </div>
         )}
 
-        <div className="text-xs text-muted-foreground text-right">
-          Last updated: {new Date(data.lastUpdated).toLocaleTimeString()}
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{data.source ? `Source: ${sourceLabel}` : ''}</span>
+          <span>Last updated: {new Date(data.lastUpdated).toLocaleTimeString()}</span>
         </div>
       </div>
     </Card>
