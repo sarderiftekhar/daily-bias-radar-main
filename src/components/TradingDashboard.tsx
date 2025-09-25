@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MarketCard } from "./MarketCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ export const TradingDashboard = () => {
   const [showBias, setShowBias] = useState(false);
   const [ukTime, setUkTime] = useState<string>("");
   const [predictionDateUK, setPredictionDateUK] = useState<string>("");
+  const dailyTimeoutRef = useRef<number | null>(null);
   const { toast } = useToast();
 
   const fetchData = async () => {
@@ -78,13 +79,14 @@ export const TradingDashboard = () => {
     }).format(now);
     setUkTime(ukTimeString);
 
-    // Bias window (11 PM to 6 AM UK time)
-    const biasWindow = hour >= 23 || hour < 6;
+    // Bias window (11:01 PM to 6 AM UK time)
+    const biasWindow = (hour === 23 && minute >= 1) || hour < 6;
     setShowBias(biasWindow);
 
     // Compute prediction date/day using a UTC-anchored date built from London Y-M-D
     let target = new Date(Date.UTC(year, month - 1, day));
-    if (hour >= 23) {
+    // Roll to next trading day starting at 23:01 UK
+    if (hour === 23 && minute >= 1) {
       target.setUTCDate(target.getUTCDate() + 1);
     }
 
@@ -113,13 +115,34 @@ export const TradingDashboard = () => {
     
     // Update time every second
     const timeInterval = setInterval(updateTime, 1000);
-    
-    // Fetch data every 5 minutes
-    const dataInterval = setInterval(fetchData, 5 * 60 * 1000);
+
+    // Schedule a single daily fetch at 23:01 UK time
+    const scheduleDailyFetch = () => {
+      const now = new Date();
+      const londonNow = new Date(now.toLocaleString("en-US", { timeZone: "Europe/London" }));
+
+      // Compute next 23:01:00 London time
+      const next = new Date(londonNow);
+      next.setHours(23, 1, 0, 0);
+      if (londonNow >= next) {
+        // If it's already past 23:01, schedule for tomorrow
+        next.setDate(next.getDate() + 1);
+      }
+
+      const delayMs = next.getTime() - londonNow.getTime();
+      return setTimeout(async () => {
+        await fetchData();
+        // After executing, schedule the next day's fetch
+        dailyTimeoutRef.current = scheduleDailyFetch();
+      }, delayMs);
+    };
+
+    // Keep a ref to clear timeout on unmount
+    dailyTimeoutRef.current = scheduleDailyFetch();
 
     return () => {
       clearInterval(timeInterval);
-      clearInterval(dataInterval);
+      if (dailyTimeoutRef.current) clearTimeout(dailyTimeoutRef.current);
     };
   }, []);
 
@@ -129,7 +152,7 @@ export const TradingDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-trading p-6">
-      <div className="max-w-7xl mx-auto space-y-8">
+      <div className="max-w-7xl mx-auto space-y-8 pt-12">
         {/* Header */}
         <div className="text-center space-y-4">
           <div className="flex items-center justify-center gap-3 mb-2">
@@ -137,7 +160,7 @@ export const TradingDashboard = () => {
             <h1 className="text-4xl font-bold text-foreground">Market Bias Terminal</h1>
           </div>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Professional trading bias predictions for major markets. Predictions available after 11 PM UK time.
+            Professional trading bias predictions for major markets - available after 11:01 PM UK time.
           </p>
           {showBias && (
             <div className="flex items-center justify-center gap-2 text-sm">
@@ -188,7 +211,7 @@ export const TradingDashboard = () => {
               <div>
                 <h3 className="text-sm font-medium text-foreground">Bias Predictions Not Available</h3>
                 <p className="text-sm text-muted-foreground">
-                  Trading bias predictions are only shown after 11:00 PM UK time for the next trading day.
+                  Trading bias predictions are only shown after 11:01 PM UK time for the next trading day.
                 </p>
               </div>
             </div>

@@ -1,4 +1,5 @@
 import { MarketData, MarketBias } from "@/components/MarketCard";
+import { YahooQuoteResponse } from "@/types/yahoo";
 
 // Market symbols for different APIs
 const MARKET_SYMBOLS = {
@@ -104,11 +105,22 @@ class MarketDataService {
   }
 
   private async fetchYahooSeries(yahooSymbol: string, friendlyName: string): Promise<MarketData> {
-    const url = `/yapi/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?range=10d&interval=1d&includePrePost=false`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+    // Build once and try the redirect alias first, then fall back to the direct function URL
+    const pathSuffix = `v8/finance/chart/${encodeURIComponent(yahooSymbol)}?range=10d&interval=1d&includePrePost=false`;
+    const primaryUrl = `/yapi/${pathSuffix}`;
+    const fallbackUrl = `/.netlify/functions/yahoo/${pathSuffix}`;
+
+    let res: Response;
+    try {
+      res = await fetch(primaryUrl, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      console.warn(`Primary Yahoo fetch failed for ${friendlyName} (${yahooSymbol}). Error:`, err);
+      // Try direct function path as a fallback in production if redirect misbehaves
+      res = await fetch(fallbackUrl, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
     }
+
     const json: YahooFinanceData = await res.json();
     const result = json.chart?.result?.[0];
     if (!result || !result.indicators?.quote?.[0] || !result.timestamp?.length) {
@@ -176,33 +188,11 @@ class MarketDataService {
     }
 
     const marketInfo = MARKET_SYMBOLS[symbol as keyof typeof MARKET_SYMBOLS];
-
-    // Attempt Alpha Vantage for commodities first
-    try {
-      if (symbol === 'CRUDE') {
-        const data = await this.fetchAlphaCommodity('WTI', marketInfo?.name || 'Crude Oil');
-        this.cache.set(symbol, { data, timestamp: Date.now() });
-        return data;
-      }
-      if (symbol === 'GOLD') {
-        const data = await this.fetchAlphaCommodity('GOLD', marketInfo?.name || 'Gold');
-        this.cache.set(symbol, { data, timestamp: Date.now() });
-        return data;
-      }
-    } catch (e) {
-      console.warn(`Alpha Vantage commodity fetch failed for ${symbol}, falling back to Yahoo:`, e);
-      // fall through to Yahoo path
-    }
-
     const yahooSymbol = marketInfo?.yahoo || symbol;
 
-    // Primary Yahoo fallback (for all symbols)
+    // Always use Yahoo for all symbols (including Gold/Crude)
     try {
       const data = await this.fetchYahooSeries(yahooSymbol, marketInfo?.name || symbol);
-      // If we got here after AV failure on a commodity, mark fallback
-      if (symbol === 'CRUDE' || symbol === 'GOLD') {
-        data.isFallback = true;
-      }
       this.cache.set(symbol, { data, timestamp: Date.now() });
       return data;
     } catch (error) {
@@ -224,6 +214,7 @@ class MarketDataService {
       throw new Error(`Failed to fetch market data for ${symbol}`);
     }
   }
+
 
   calculateBias(data: MarketData): MarketBias {
     // Check for inside bar first
@@ -278,14 +269,6 @@ class MarketDataService {
     }
 
     return successes;
-  }
-
-  // Check if current time is after 11 PM UK time
-  shouldShowBias(): boolean {
-    const now = new Date();
-    const ukTime = new Date(now.toLocaleString("en-US", { timeZone: "Europe/London" }));
-    const hour = ukTime.getHours();
-    return hour >= 23 || hour < 6; // Show from 11 PM to 6 AM UK time
   }
 }
 

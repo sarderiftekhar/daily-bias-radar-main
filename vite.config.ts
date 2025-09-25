@@ -6,7 +6,8 @@ import { componentTagger } from "lovable-tagger";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const alphaKey = env.API_KEY || "";
+  // Prefer values from .env files, but fall back to OS-level environment variables for developers who don't want a local .env
+  const alphaKey = (env.API_KEY || process.env.API_KEY || "").trim();
 
   return {
     server: {
@@ -24,9 +25,10 @@ export default defineConfig(({ mode }) => {
           target: "https://www.alphavantage.co",
           changeOrigin: true,
           secure: true,
-          // Map /avapi?... -> /query?...&apikey=XXXX
+          // Map /avapi?... -> /query?...&apikey=XXXX (only if API key is provided)
           rewrite: (p) => {
             const base = p.replace(/^\/avapi/, "/query");
+            if (!alphaKey) return base; // avoid appending an empty apikey param
             const hasQuery = base.includes("?");
             const suffix = `${hasQuery ? "&" : "?"}apikey=${encodeURIComponent(alphaKey)}`;
             return `${base}${suffix}`;
